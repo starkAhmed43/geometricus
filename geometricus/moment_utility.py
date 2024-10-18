@@ -1,44 +1,34 @@
-import typing as ty
-from dataclasses import dataclass
-from enum import Enum
-
 import numba as nb
 import numpy as np
-
+import typing as ty
+from enum import Enum
+from dataclasses import dataclass
 
 @nb.njit
 def nb_mean_axis_0(array: np.ndarray) -> np.ndarray:
-    """
-    Same as np.mean(array, axis=0) but njitted
-    """
+    """Same as np.mean(array, axis=0) but njitted"""
     mean_array = np.zeros(array.shape[1])
     for i in range(array.shape[1]):
         mean_array[i] = np.mean(array[:, i])
     return mean_array
-
 
 @dataclass
 class MomentInfo:
     moment_function: ty.Callable[[int, int, int, np.ndarray, np.ndarray], float]
     mu_arguments: ty.List[ty.Tuple[int, int, int]]
 
-
 @nb.njit(cache=False)
 def mu(p, q, r, coords, centroid):
-    """
-    Central moment
-    """
+    """Central moment"""
     return np.sum(
         ((coords[:, 0] - centroid[0]) ** p)
         * ((coords[:, 1] - centroid[1]) ** q)
         * ((coords[:, 2] - centroid[2]) ** r)
     )
 
-
 @nb.njit
 def O_3(mu_200, mu_020, mu_002):
     return mu_200 + mu_020 + mu_002
-
 
 @nb.njit
 def O_4(mu_200, mu_020, mu_002, mu_110, mu_101, mu_011):
@@ -49,7 +39,6 @@ def O_4(mu_200, mu_020, mu_002, mu_110, mu_101, mu_011):
             - mu_020 * mu_101 ** 2
             - mu_200 * mu_011 ** 2
     )
-
 
 @nb.njit
 def O_5(mu_200, mu_020, mu_002, mu_110, mu_101, mu_011):
@@ -62,11 +51,8 @@ def O_5(mu_200, mu_020, mu_002, mu_110, mu_101, mu_011):
             - mu_011 ** 2
     )
 
-
 @nb.njit
-def F(
-        mu_201, mu_021, mu_210, mu_300, mu_111, mu_012, mu_003, mu_030, mu_102, mu_120,
-):
+def F(mu_201, mu_021, mu_210, mu_300, mu_111, mu_012, mu_003, mu_030, mu_102, mu_120):
     return (
             mu_003 ** 2
             + 6 * mu_012 ** 2
@@ -86,7 +72,6 @@ def F(
             - 3 * mu_120 * mu_300
             + mu_300 ** 2
     )
-
 
 def make_formula(name, formula_string):
     """
@@ -125,7 +110,6 @@ def make_formula(name, formula_string):
     print(f"{name} = MomentInfo({name}, {mu_arguments})")
     print(f"@nb.njit\ndef {name}({mu_types}):\n    return {formula}")
 
-
 @nb.njit
 def phi_2(mu_020, mu_011, mu_110, mu_200, mu_002, mu_101):
     return (
@@ -136,7 +120,6 @@ def phi_2(mu_020, mu_011, mu_110, mu_200, mu_002, mu_101):
             + 2 * mu_101 ** 2
             + 2 * mu_011 ** 2
     )
-
 
 @nb.njit
 def phi_3(mu_020, mu_011, mu_110, mu_200, mu_002, mu_101):
@@ -153,11 +136,8 @@ def phi_3(mu_020, mu_011, mu_110, mu_200, mu_002, mu_101):
             + 6 * mu_110 * mu_101 * mu_011
     )
 
-
 @nb.njit
-def phi_4(
-        mu_030, mu_021, mu_120, mu_003, mu_111, mu_201, mu_102, mu_210, mu_012, mu_300,
-):
+def phi_4(mu_030, mu_021, mu_120, mu_003, mu_111, mu_201, mu_102, mu_210, mu_012, mu_300):
     return (
             mu_300 ** 2
             + mu_030 ** 2
@@ -170,7 +150,6 @@ def phi_4(
             + 3 * mu_012 ** 2
             + 6 * mu_111 ** 2
     )
-
 
 @nb.njit
 def phi_5(mu_030, mu_021, mu_120, mu_003, mu_201, mu_102, mu_210, mu_012, mu_300):
@@ -195,11 +174,8 @@ def phi_5(mu_030, mu_021, mu_120, mu_003, mu_201, mu_102, mu_210, mu_012, mu_300
             + mu_012 ** 2
     )
 
-
 @nb.njit
-def phi_6(
-        mu_030, mu_021, mu_120, mu_003, mu_111, mu_201, mu_102, mu_210, mu_012, mu_300,
-):
+def phi_6(mu_030, mu_021, mu_120, mu_003, mu_111, mu_201, mu_102, mu_210, mu_012, mu_300):
     return (
             1 * mu_300 ** 4
             + 6 * mu_300 ** 2 * mu_210 ** 2
@@ -285,11 +261,8 @@ def phi_6(
             + 12 * mu_111 ** 4
     )
 
-
 @nb.njit
-def phi_7(
-        mu_030, mu_021, mu_120, mu_003, mu_111, mu_201, mu_102, mu_210, mu_012, mu_300,
-):
+def phi_7(mu_030, mu_021, mu_120, mu_003, mu_111, mu_201, mu_102, mu_210, mu_012, mu_300):
     return (
             1 * mu_300 ** 4
             + 1 * mu_300 ** 3 * mu_120
@@ -460,11 +433,8 @@ def phi_7(
             + 2 * mu_012 ** 4
     )
 
-
 @nb.njit
-def phi_8(
-        mu_030, mu_021, mu_120, mu_003, mu_111, mu_201, mu_102, mu_210, mu_012, mu_300,
-):
+def phi_8(mu_030, mu_021, mu_120, mu_003, mu_111, mu_201, mu_102, mu_210, mu_012, mu_300):
     return (
             1 * mu_300 ** 4
             + 2 * mu_300 ** 3 * mu_120
@@ -644,26 +614,8 @@ def phi_8(
             + 1 * mu_012 ** 4
     )
 
-
 @nb.njit
-def phi_9(
-        mu_030,
-        mu_021,
-        mu_120,
-        mu_101,
-        mu_003,
-        mu_200,
-        mu_110,
-        mu_201,
-        mu_111,
-        mu_102,
-        mu_210,
-        mu_020,
-        mu_012,
-        mu_002,
-        mu_011,
-        mu_300,
-):
+def phi_9(mu_030, mu_021, mu_120, mu_101, mu_003, mu_200, mu_110, mu_201, mu_111, mu_102, mu_210, mu_020, mu_012, mu_002, mu_011, mu_300):
     return (
             1 * mu_200 * mu_300 ** 2
             + 2 * mu_110 * mu_300 * mu_210
@@ -703,26 +655,8 @@ def phi_9(
             + 2 * mu_002 * mu_012 ** 2
     )
 
-
 @nb.njit
-def phi_10(
-        mu_030,
-        mu_021,
-        mu_120,
-        mu_101,
-        mu_003,
-        mu_200,
-        mu_110,
-        mu_201,
-        mu_111,
-        mu_102,
-        mu_210,
-        mu_020,
-        mu_012,
-        mu_002,
-        mu_011,
-        mu_300,
-):
+def phi_10(mu_030, mu_021, mu_120, mu_101, mu_003, mu_200, mu_110, mu_201, mu_111, mu_102, mu_210, mu_020, mu_012, mu_002, mu_011, mu_300):
     return (
             1 * mu_200 * mu_300 ** 2
             + 1 * mu_200 * mu_300 * mu_120
@@ -777,25 +711,8 @@ def phi_10(
             + 1 * mu_002 * mu_012 ** 2
     )
 
-
 @nb.njit
-def phi_11(
-        mu_030,
-        mu_021,
-        mu_120,
-        mu_101,
-        mu_003,
-        mu_200,
-        mu_110,
-        mu_201,
-        mu_102,
-        mu_210,
-        mu_012,
-        mu_020,
-        mu_002,
-        mu_011,
-        mu_300,
-):
+def phi_11(mu_030, mu_021, mu_120, mu_101, mu_003, mu_200, mu_110, mu_201, mu_102, mu_210, mu_012, mu_020, mu_002, mu_011, mu_300):
     return (
             1 * mu_200 * mu_300 ** 2
             + 2 * mu_200 * mu_300 * mu_120
@@ -844,26 +761,8 @@ def phi_11(
             + 1 * mu_002 * mu_021 ** 2
     )
 
-
 @nb.njit
-def phi_12(
-        mu_030,
-        mu_021,
-        mu_120,
-        mu_101,
-        mu_003,
-        mu_200,
-        mu_110,
-        mu_201,
-        mu_111,
-        mu_102,
-        mu_210,
-        mu_020,
-        mu_012,
-        mu_002,
-        mu_011,
-        mu_300,
-):
+def phi_12(mu_030, mu_021, mu_120, mu_101, mu_003, mu_200, mu_110, mu_201, mu_111, mu_102, mu_210, mu_020, mu_012, mu_002, mu_011, mu_300):
     return (
             1 * mu_200 ** 2 * mu_300 ** 2
             + 4 * mu_200 * mu_110 * mu_300 * mu_210
@@ -930,26 +829,8 @@ def phi_12(
             + 4 * mu_011 ** 2 * mu_111 ** 2
     )
 
-
 @nb.njit
-def phi_13(
-        mu_030,
-        mu_021,
-        mu_120,
-        mu_101,
-        mu_003,
-        mu_200,
-        mu_110,
-        mu_201,
-        mu_111,
-        mu_102,
-        mu_210,
-        mu_012,
-        mu_020,
-        mu_002,
-        mu_011,
-        mu_300,
-):
+def phi_13(mu_030, mu_021, mu_120, mu_101, mu_003, mu_200, mu_110, mu_201, mu_111, mu_102, mu_210, mu_012, mu_020, mu_002, mu_011, mu_300):
     return (
             1 * mu_200 ** 2 * mu_300 ** 2
             + 2 * mu_200 * mu_110 * mu_300 * mu_210
@@ -1052,7 +933,6 @@ def phi_13(
             + 4 * mu_011 ** 2 * mu_111 ** 2
     )
 
-
 @nb.njit
 def CI(mu_000,
        mu_200,
@@ -1143,7 +1023,6 @@ def CI(mu_000,
                          + mu_011 * mu_110 * (mu_020 * beta_3 + mu_200 * beta_5 + mu_002 * beta_9)
                          + mu_101 * mu_110 * (mu_200 * beta_2 + mu_002 * beta_6 + mu_020 * beta_8))
 
-
 class MomentType(Enum):
     """
     Different rotation invariant moments (order 2 and order 3)
@@ -1172,211 +1051,21 @@ class MomentType(Enum):
     """
 
     O_3 = MomentInfo(O_3, [(2, 0, 0), (0, 2, 0), (0, 0, 2)])
-    O_4 = MomentInfo(
-        O_4, [(2, 0, 0), (0, 2, 0), (0, 0, 2), (1, 1, 0), (1, 0, 1), (0, 1, 1)]
-    )
-    O_5 = MomentInfo(
-        O_5, [(2, 0, 0), (0, 2, 0), (0, 0, 2), (1, 1, 0), (1, 0, 1), (0, 1, 1)]
-    )
-    F = MomentInfo(
-        F,
-        [
-            (2, 0, 1),
-            (0, 2, 1),
-            (2, 1, 0),
-            (3, 0, 0),
-            (1, 1, 1),
-            (0, 1, 2),
-            (0, 0, 3),
-            (0, 3, 0),
-            (1, 0, 2),
-            (1, 2, 0),
-        ],
-    )
-    phi_2 = MomentInfo(
-        phi_2, [(0, 2, 0), (0, 1, 1), (1, 1, 0), (2, 0, 0), (0, 0, 2), (1, 0, 1)]
-    )
-    phi_3 = MomentInfo(
-        phi_3, [(0, 2, 0), (0, 1, 1), (1, 1, 0), (2, 0, 0), (0, 0, 2), (1, 0, 1)]
-    )
-    phi_4 = MomentInfo(
-        phi_4,
-        [
-            (0, 3, 0),
-            (0, 2, 1),
-            (1, 2, 0),
-            (0, 0, 3),
-            (1, 1, 1),
-            (2, 0, 1),
-            (1, 0, 2),
-            (2, 1, 0),
-            (0, 1, 2),
-            (3, 0, 0),
-        ],
-    )
-    phi_5 = MomentInfo(
-        phi_5,
-        [
-            (0, 3, 0),
-            (0, 2, 1),
-            (1, 2, 0),
-            (0, 0, 3),
-            (2, 0, 1),
-            (1, 0, 2),
-            (2, 1, 0),
-            (0, 1, 2),
-            (3, 0, 0),
-        ],
-    )
-    phi_6 = MomentInfo(
-        phi_6,
-        [
-            (0, 3, 0),
-            (0, 2, 1),
-            (1, 2, 0),
-            (0, 0, 3),
-            (1, 1, 1),
-            (2, 0, 1),
-            (1, 0, 2),
-            (2, 1, 0),
-            (0, 1, 2),
-            (3, 0, 0),
-        ],
-    )
-    phi_7 = MomentInfo(
-        phi_7,
-        [
-            (0, 3, 0),
-            (0, 2, 1),
-            (1, 2, 0),
-            (0, 0, 3),
-            (1, 1, 1),
-            (2, 0, 1),
-            (1, 0, 2),
-            (2, 1, 0),
-            (0, 1, 2),
-            (3, 0, 0),
-        ],
-    )
-    phi_8 = MomentInfo(
-        phi_8,
-        [
-            (0, 3, 0),
-            (0, 2, 1),
-            (1, 2, 0),
-            (0, 0, 3),
-            (1, 1, 1),
-            (2, 0, 1),
-            (1, 0, 2),
-            (2, 1, 0),
-            (0, 1, 2),
-            (3, 0, 0),
-        ],
-    )
-    phi_9 = MomentInfo(
-        phi_9,
-        [
-            (0, 3, 0),
-            (0, 2, 1),
-            (1, 2, 0),
-            (1, 0, 1),
-            (0, 0, 3),
-            (2, 0, 0),
-            (1, 1, 0),
-            (2, 0, 1),
-            (1, 1, 1),
-            (1, 0, 2),
-            (2, 1, 0),
-            (0, 2, 0),
-            (0, 1, 2),
-            (0, 0, 2),
-            (0, 1, 1),
-            (3, 0, 0),
-        ],
-    )
-    phi_10 = MomentInfo(
-        phi_10,
-        [
-            (0, 3, 0),
-            (0, 2, 1),
-            (1, 2, 0),
-            (1, 0, 1),
-            (0, 0, 3),
-            (2, 0, 0),
-            (1, 1, 0),
-            (2, 0, 1),
-            (1, 1, 1),
-            (1, 0, 2),
-            (2, 1, 0),
-            (0, 2, 0),
-            (0, 1, 2),
-            (0, 0, 2),
-            (0, 1, 1),
-            (3, 0, 0),
-        ],
-    )
-    phi_11 = MomentInfo(
-        phi_11,
-        [
-            (0, 3, 0),
-            (0, 2, 1),
-            (1, 2, 0),
-            (1, 0, 1),
-            (0, 0, 3),
-            (2, 0, 0),
-            (1, 1, 0),
-            (2, 0, 1),
-            (1, 0, 2),
-            (2, 1, 0),
-            (0, 1, 2),
-            (0, 2, 0),
-            (0, 0, 2),
-            (0, 1, 1),
-            (3, 0, 0),
-        ],
-    )
-    phi_12 = MomentInfo(
-        phi_12,
-        [
-            (0, 3, 0),
-            (0, 2, 1),
-            (1, 2, 0),
-            (1, 0, 1),
-            (0, 0, 3),
-            (2, 0, 0),
-            (1, 1, 0),
-            (2, 0, 1),
-            (1, 1, 1),
-            (1, 0, 2),
-            (2, 1, 0),
-            (0, 2, 0),
-            (0, 1, 2),
-            (0, 0, 2),
-            (0, 1, 1),
-            (3, 0, 0),
-        ],
-    )
-    phi_13 = MomentInfo(
-        phi_13,
-        [
-            (0, 3, 0),
-            (0, 2, 1),
-            (1, 2, 0),
-            (1, 0, 1),
-            (0, 0, 3),
-            (2, 0, 0),
-            (1, 1, 0),
-            (2, 0, 1),
-            (1, 1, 1),
-            (1, 0, 2),
-            (2, 1, 0),
-            (0, 1, 2),
-            (0, 2, 0),
-            (0, 0, 2),
-            (0, 1, 1),
-            (3, 0, 0),
-        ],
-    )
+    O_4 = MomentInfo(O_4, [(2, 0, 0), (0, 2, 0), (0, 0, 2), (1, 1, 0), (1, 0, 1), (0, 1, 1)])
+    O_5 = MomentInfo(O_5, [(2, 0, 0), (0, 2, 0), (0, 0, 2), (1, 1, 0), (1, 0, 1), (0, 1, 1)])
+    F = MomentInfo(F, [(2, 0, 1), (0, 2, 1), (2, 1, 0), (3, 0, 0), (1, 1, 1), (0, 1, 2), (0, 0, 3), (0, 3, 0), (1, 0, 2), (1, 2, 0)])
+    phi_2 = MomentInfo(phi_2, [(0, 2, 0), (0, 1, 1), (1, 1, 0), (2, 0, 0), (0, 0, 2), (1, 0, 1)])
+    phi_3 = MomentInfo(phi_3, [(0, 2, 0), (0, 1, 1), (1, 1, 0), (2, 0, 0), (0, 0, 2), (1, 0, 1)])
+    phi_4 = MomentInfo(phi_4, [(0, 3, 0), (0, 2, 1), (1, 2, 0), (0, 0, 3), (1, 1, 1), (2, 0, 1), (1, 0, 2), (2, 1, 0), (0, 1, 2), (3, 0, 0)])
+    phi_5 = MomentInfo(phi_5, [(0, 3, 0), (0, 2, 1), (1, 2, 0), (0, 0, 3), (2, 0, 1), (1, 0, 2), (2, 1, 0), (0, 1, 2), (3, 0, 0)])
+    phi_6 = MomentInfo(phi_6, [(0, 3, 0), (0, 2, 1), (1, 2, 0), (0, 0, 3), (1, 1, 1), (2, 0, 1), (1, 0, 2), (2, 1, 0), (0, 1, 2), (3, 0, 0)])
+    phi_7 = MomentInfo(phi_7, [(0, 3, 0), (0, 2, 1), (1, 2, 0), (0, 0, 3), (1, 1, 1), (2, 0, 1), (1, 0, 2), (2, 1, 0), (0, 1, 2), (3, 0, 0)])
+    phi_8 = MomentInfo(phi_8, [(0, 3, 0), (0, 2, 1), (1, 2, 0), (0, 0, 3), (1, 1, 1), (2, 0, 1), (1, 0, 2), (2, 1, 0), (0, 1, 2), (3, 0, 0)])
+    phi_9 = MomentInfo(phi_9, [(0, 3, 0), (0, 2, 1), (1, 2, 0), (1, 0, 1), (0, 0, 3), (2, 0, 0), (1, 1, 0), (2, 0, 1), (1, 1, 1), (1, 0, 2), (2, 1, 0), (0, 2, 0), (0, 1, 2), (0, 0, 2), (0, 1, 1), (3, 0, 0)])
+    phi_10 = MomentInfo(phi_10, [(0, 3, 0), (0, 2, 1), (1, 2, 0), (1, 0, 1), (0, 0, 3), (2, 0, 0), (1, 1, 0), (2, 0, 1), (1, 1, 1), (1, 0, 2), (2, 1, 0), (0, 2, 0), (0, 1, 2), (0, 0, 2), (0, 1, 1), (3, 0, 0)])
+    phi_11 = MomentInfo(phi_11, [(0, 3, 0), (0, 2, 1), (1, 2, 0), (1, 0, 1), (0, 0, 3), (2, 0, 0), (1, 1, 0), (2, 0, 1), (1, 0, 2), (2, 1, 0), (0, 1, 2), (0, 2, 0), (0, 0, 2), (0, 1, 1), (3, 0, 0)])
+    phi_12 = MomentInfo(phi_12, [(0, 3, 0), (0, 2, 1), (1, 2, 0), (1, 0, 1), (0, 0, 3), (2, 0, 0), (1, 1, 0), (2, 0, 1), (1, 1, 1), (1, 0, 2), (2, 1, 0), (0, 2, 0), (0, 1, 2), (0, 0, 2), (0, 1, 1), (3, 0, 0)])
+    phi_13 = MomentInfo(phi_13, [(0, 3, 0), (0, 2, 1), (1, 2, 0), (1, 0, 1), (0, 0, 3), (2, 0, 0), (1, 1, 0), (2, 0, 1), (1, 1, 1), (1, 0, 2), (2, 1, 0), (0, 1, 2), (0, 2, 0), (0, 0, 2), (0, 1, 1), (3, 0, 0)])
     CI = MomentInfo(
         CI,
         [
@@ -1418,15 +1107,9 @@ class MomentType(Enum):
     def get_moments_from_coordinates(self, mus: ty.List[float]):
         return self.value.moment_function(*mus)
 
-
 def get_moments_from_coordinates(
         coordinates: np.ndarray,
-        moment_types: ty.List[MomentType] = (
-                MomentType.O_3,
-                MomentType.O_4,
-                MomentType.O_5,
-                MomentType.F,
-        ),
+        moment_types: ty.List[MomentType] = (MomentType.O_3, MomentType.O_4, MomentType.O_5, MomentType.F)
 ) -> ty.List[float]:
     """
     Gets rotation-invariant moments for a set of coordinates
@@ -1444,18 +1127,8 @@ def get_moments_from_coordinates(
     """
     if coordinates.shape[0] < 2:
         return [np.nan] * len(moment_types)
-    all_moment_mu_types: ty.Set[ty.Tuple[int, int, int]] = set(
-        m for moment_type in moment_types for m in moment_type.value.mu_arguments
-    )
+    all_moment_mu_types: ty.Set[ty.Tuple[int, int, int]] = set(m for moment_type in moment_types for m in moment_type.value.mu_arguments)
     centroid = nb_mean_axis_0(coordinates)
-    mus = {
-        (x, y, z): mu(float(x), float(y), float(z), coordinates, centroid)
-        for (x, y, z) in all_moment_mu_types
-    }
-    moments = [
-        moment_type.get_moments_from_coordinates(
-            [mus[m] for m in moment_type.value.mu_arguments]
-        )
-        for moment_type in moment_types
-    ]
+    mus = {(x, y, z): mu(float(x), float(y), float(z), coordinates, centroid) for (x, y, z) in all_moment_mu_types}
+    moments = [moment_type.get_moments_from_coordinates([mus[m] for m in moment_type.value.mu_arguments]) for moment_type in moment_types]
     return moments

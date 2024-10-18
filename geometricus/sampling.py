@@ -1,26 +1,23 @@
-from ftplib import FTP
-
-import torch
-
-from dataclasses import dataclass
 import h5py
+import torch
 import numba as nb
 import numpy as np
+import prody as pd
+from ftplib import FTP
+from tqdm.auto import tqdm
+from dataclasses import dataclass
+from scipy.optimize import linear_sum_assignment
+
 import warnings
 from Bio import BiopythonDeprecationWarning
-
 warnings.filterwarnings("ignore", category=BiopythonDeprecationWarning)
-import prody as pd
-from scipy.optimize import linear_sum_assignment
-from tqdm import tqdm
 
 from geometricus import protein_utility
-from geometricus.moment_invariants import MultipleMomentInvariants, NUM_MOMENTS
 from geometricus.moment_utility import nb_mean_axis_0
+from geometricus.moment_invariants import MultipleMomentInvariants, NUM_MOMENTS
 
 POSITIVE_TM_THRESHOLD = 0.8  # only protein pairs with >this TM score considered for positive residue pairs
 NEGATIVE_TM_THRESHOLD = 0.6  # only protein pairs with <this TM score considered for negative residue pairs
-
 
 def get_cath_data(data_folder):
     ftp = FTP("orengoftp.biochem.ucl.ac.uk")
@@ -31,7 +28,6 @@ def get_cath_data(data_folder):
     filename = 'cath-dataset-nonredundant-S40.pdb.tgz'
     with open(data_folder / filename, "wb") as f:
         ftp.retrbinary(f"RETR {filename}", f.write)
-
 
 @dataclass
 class ResiduePair:
@@ -102,7 +98,6 @@ def get_rmsd_weights(distances, min_weight=0.5):
     weights = (min_weight * weights) + min_weight
     return weights
 
-
 def get_rmsd_neighbors_same_pair(backbone_coords_1, coords_1, backbone_coords_2, coords_2):
     """
     Gets total weighted RMSD between coords_1 and coords_2 based on superposition of backbone_coords_1 and backbone_coords_2
@@ -119,22 +114,15 @@ def get_rmsd_neighbors_same_pair(backbone_coords_1, coords_1, backbone_coords_2,
     -------
     weighted RMSD
     """
-    distances = np.array(
-        [protein_utility.get_rmsd(backbone_coords_1[backbone_coords_1.shape[0] // 2], c) for c in coords_1])
+    distances = np.array([protein_utility.get_rmsd(backbone_coords_1[backbone_coords_1.shape[0] // 2], c) for c in coords_1])
     weights = get_rmsd_weights(distances)
-    assert backbone_coords_1.shape[0] == backbone_coords_2.shape[0], (
-        backbone_coords_1.shape[0], backbone_coords_2.shape[0])
+    assert backbone_coords_1.shape[0] == backbone_coords_2.shape[0], (backbone_coords_1.shape[0], backbone_coords_2.shape[0])
     matrix = get_backbone_superposed_rmsd_matrix(backbone_coords_1, coords_1, backbone_coords_2, coords_2)
     mapping = linear_sum_assignment(matrix)
     rmsd = sum([matrix[i1, i2] * weights[i] for i, (i1, i2) in enumerate(zip(mapping[0], mapping[1]))]) / sum(weights)
     return rmsd
 
-
-def sample_from_same_protein(protein_moments: MultipleMomentInvariants,
-                             num=100,
-                             close=2,
-                             far_min=5,
-                             far_max=20):
+def sample_from_same_protein(protein_moments: MultipleMomentInvariants, num=100, close=2, far_min=5, far_max=20):
     """
     Creates positive and negative ResiduePair objects from the same protein
     Positive pairs are close to each other in sequence (upto `close` away)
@@ -164,7 +152,6 @@ def sample_from_same_protein(protein_moments: MultipleMomentInvariants,
     start_val = 8
     for i in range(num):
         lists = list(range(start_val + close, length - close - start_val))
-        # lists = list(range(close, length - close))
         if len(lists) == 0:
             continue
         chosen_idx = np.random.choice(lists)
@@ -199,7 +186,6 @@ def sample_from_same_protein(protein_moments: MultipleMomentInvariants,
                               protein_moments.normalized_moments[far_idx],
                               False, False, rmsd)
 
-
 @nb.njit
 def get_rmsd_neighbors_aligned_pair(coords_1, coords_2, center_1, neighbors_1, mapping):
     """
@@ -229,7 +215,6 @@ def get_rmsd_neighbors_aligned_pair(coords_1, coords_2, center_1, neighbors_1, m
             rmsd += protein_utility.get_rmsd(coords_1[c], coords_2[mapping[c]]) * weights[i]
     return rmsd / sum(weights)
 
-
 def check_tm_score(filename, is_positive):
     """
     Checks if TM score is within TM_THRESHOLDS for a given fasta file returned by US-align
@@ -246,7 +231,7 @@ def check_tm_score(filename, is_positive):
     min_tmscore = 2
     max_tmscore = 0
     for key, _ in protein_utility.get_sequences_from_fasta_yield(filename):
-        if key is None:
+        if not key:
             return []
         tmscore = float(key.split("\t")[-1].split("=")[-1])
         if tmscore < min_tmscore:
@@ -259,7 +244,6 @@ def check_tm_score(filename, is_positive):
     if not is_positive and max_tmscore > NEGATIVE_TM_THRESHOLD:
         return False
     return True
-
 
 def superpose_proteins(protein_1_file, protein_2_file, matrix_file):
     """
@@ -289,7 +273,6 @@ def superpose_proteins(protein_1_file, protein_2_file, matrix_file):
     transformation = pd.Transformation(matrix[:, 1:], matrix[:, 0])
     pdb_1 = pd.applyTransformation(transformation, pdb_1)
     return pdb_1, pdb_2
-
 
 def map_residue_indices(aln, protein_1, protein_2, is_positive):
     """
@@ -334,12 +317,9 @@ def map_residue_indices(aln, protein_1, protein_2, is_positive):
         indices.append((a1, a2, aligned))
     return indices, mapping
 
-
 def sample_from_protein_pair(protein_1_moments: MultipleMomentInvariants,
                              protein_2_moments: MultipleMomentInvariants,
-                             matrices_folder,
-                             pdb_folder,
-                             is_positive):
+                             matrices_folder, pdb_folder, is_positive):
     """
     Creates ResiduePair objects from two aligned proteins
 
@@ -367,21 +347,16 @@ def sample_from_protein_pair(protein_1_moments: MultipleMomentInvariants,
     max_length = min(len(aln[protein_1]), len(aln[protein_2]))
     aln = {k: v[:max_length] for k, v in aln.items()}
 
-    pdb_1, pdb_2 = superpose_proteins(pdb_folder / protein_1, pdb_folder / protein_2,
-                                      matrices_folder / f"{protein_1}_{protein_2}")
+    pdb_1, pdb_2 = superpose_proteins(pdb_folder / protein_1, pdb_folder / protein_2, matrices_folder / f"{protein_1}_{protein_2}")
     coords_1 = pdb_1.select("calpha").getCoords()
     neighbors_1, vector_1 = protein_1_moments.get_neighbors(), protein_1_moments.normalized_moments
     coords_2 = pdb_2.select("calpha").getCoords()
     vector_2 = protein_2_moments.normalized_moments
     indices, mapping = map_residue_indices(aln, protein_1, protein_2, is_positive)
     for a1, a2, aligned in indices:
-        assert a1 < len(vector_1) and a2 < len(
-            vector_2), f"{protein_1} {protein_2} {a1} {a2} {len(vector_1)} {len(vector_2)}"
+        assert a1 < len(vector_1) and a2 < len(vector_2), f"{protein_1} {protein_2} {a1} {a2} {len(vector_1)} {len(vector_2)}"
         rmsd = get_rmsd_neighbors_aligned_pair(coords_1, coords_2, a1, np.array(list(neighbors_1[a1])), mapping)
-        yield ResiduePair(protein_1, protein_2, a1, a2,
-                          vector_1[a1], vector_2[a2],
-                          aligned, is_positive, rmsd)
-
+        yield ResiduePair(protein_1, protein_2, a1, a2, vector_1[a1], vector_2[a2], aligned, is_positive, rmsd)
 
 def make_training_data_pair(output_folder,
                             protein_moments: dict,
@@ -389,26 +364,21 @@ def make_training_data_pair(output_folder,
                             matrices_folder, pdb_folder,
                             max_training_points=5e6,
                             output_suffix="_pair", num_moments=NUM_MOMENTS):
-    n_pos = 0
-    n_total = 0
+    n_pos = n_total = 0
     with open(output_folder / f"data{output_suffix}.txt", "w") as info_file:
         with h5py.File(output_folder / f"moments{output_suffix}.hdf5", "w") as moment_file:
             moments = moment_file.create_dataset("moments", (max_training_points, num_moments * 2), dtype=np.float32)
-            header = ["protein_1", "protein_2",
-                      "index_1", "index_2",
-                      "label", "aligned", "rmsd"]
+            header = ["protein_1", "protein_2", "index_1", "index_2", "label", "aligned", "rmsd"]
             info_file.write("\t".join(header) + "\n")
             for filename in tqdm(matrices_folder.glob("*.fasta"), total=len(protein_moments)):
                 protein_1, protein_2 = filename.stem.split("_")
-                if protein_1 not in protein_moments or protein_2 not in protein_moments or not (
-                        matrices_folder / f"{protein_1}_{protein_2}").exists():
+                if (protein_1 not in protein_moments) or (protein_2 not in protein_moments) or (not (matrices_folder / f"{protein_1}_{protein_2}").exists()):
                     continue
                 is_positive = id_to_funfam_cluster[protein_1] == id_to_funfam_cluster[protein_2]
                 if check_tm_score(filename, is_positive):
                     for residue_pair in sample_from_protein_pair(protein_moments[protein_1],
                                                                  protein_moments[protein_2],
-                                                                 matrices_folder,
-                                                                 pdb_folder, is_positive):
+                                                                 matrices_folder, pdb_folder, is_positive):
                         if n_total >= max_training_points:
                             break
                         moments[n_total, :num_moments] = residue_pair.moments_1
@@ -418,17 +388,12 @@ def make_training_data_pair(output_folder,
                         n_pos += int(residue_pair.positive)
     print(f"Total number of training points: {n_total}\n{n_pos} positive pairs ({n_pos / n_total * 100:.2f}%)")
 
-
-def make_training_data_self(output_folder, protein_moments, max_from_single=50, max_training_points=3e6,
-                            output_suffix="_self", num_moments=NUM_MOMENTS):
-    n_pos = 0
-    n_total = 0
+def make_training_data_self(output_folder, protein_moments, max_from_single=50, max_training_points=3e6, output_suffix="_self", num_moments=NUM_MOMENTS):
+    n_pos = n_total = 0
     with open(output_folder / f"data{output_suffix}.txt", "w") as info_file:
         with h5py.File(output_folder / f"moments{output_suffix}.hdf5", "w") as moment_file:
             moments = moment_file.create_dataset("moments", (max_training_points, num_moments * 2), dtype=np.float32)
-            header = ["protein_1", "protein_2",
-                      "index_1", "index_2",
-                      "label", "aligned", "rmsd"]
+            header = ["protein_1", "protein_2",  "index_1", "index_2", "label", "aligned", "rmsd"]
             info_file.write("\t".join(header) + "\n")
 
             for m in tqdm(protein_moments.values(), total=len(protein_moments)):
@@ -441,7 +406,6 @@ def make_training_data_self(output_folder, protein_moments, max_from_single=50, 
                     n_total += 1
                     n_pos += int(residue_pair.positive)
     print(f"Total number of training points: {n_total}\n{n_pos} positive pairs ({n_pos / n_total * 100:.2f}%)")
-
 
 @dataclass
 class Data:
@@ -457,14 +421,7 @@ class Data:
 
     @classmethod
     def from_files(cls, folder, suffixes, representation_prefix="moments", representation_length: int = NUM_MOMENTS):
-        labels = []
-        aligned = []
-        rmsds = []
-        same_protein = []
-        pairs_a = []
-        pairs_b = []
-        indices_a = []
-        indices_b = []
+        labels, aligned, rmsds, same_protein, pairs_a, pairs_b, indices_a, indices_b = [], [], [], [], [], [], [], []
         for suffix in suffixes:
             num_suffix = 0
             with open(folder / f"data{suffix}.txt") as f:
@@ -494,31 +451,26 @@ class Data:
         print(f"Loaded {len(labels)} pairs")
         print(f"{np.sum(labels)} positive pairs ({np.sum(labels) / len(labels) * 100:.2f}%)")
         print(f"{np.sum(same_protein)} same protein pairs ({np.sum(same_protein) / len(same_protein) * 100:.2f}%)")
-        print(
-            f"{np.sum(aligned)} aligned pairs ({np.sum(aligned) / (len(same_protein) - np.sum(same_protein)) * 100:.2f}%)")
+        print(f"{np.sum(aligned)} aligned pairs ({np.sum(aligned) / (len(same_protein) - np.sum(same_protein)) * 100:.2f}%)")
         idx = np.arange(len(rmsds))
         np.random.shuffle(idx)
         indices_a = np.array(indices_a)[idx]
         indices_b = np.array(indices_b)[idx]
-        return cls(idx, indices_a, indices_b, pairs_a[idx], pairs_b[idx], labels[idx], aligned[idx], rmsds[idx],
-                   same_protein[idx])
+        return cls(idx, indices_a, indices_b, pairs_a[idx], pairs_b[idx], labels[idx], aligned[idx], rmsds[idx], same_protein[idx])
 
     def __len__(self):
         return len(self.labels)
 
     def train_test_split(self, test_size=0.1, rmsd_threshold=8, ignore_first_last=True, protein_lengths=None):
         num_test = int(len(self) * (test_size / 2))
-        test_ids_neg = np.random.choice(
-            np.where(((self.aligned == 1) & (self.labels == 0) & (self.rmsds <= rmsd_threshold)))[0],
-            num_test)
+        test_ids_neg = np.random.choice(np.where(((self.aligned == 1) & (self.labels == 0) & (self.rmsds <= rmsd_threshold)))[0], num_test)
         test_ids_pos = np.random.choice(np.where((self.labels == 1) & (self.rmsds <= rmsd_threshold))[0], num_test)
         test_ids = np.concatenate((test_ids_neg, test_ids_pos))
         test_ban = set(list(test_ids))
         train_ids = np.array([x for x in range(len(self)) if x not in test_ban])
         if ignore_first_last:
             assert protein_lengths is not None
-            train_ids = np.array(
-                [x for x in train_ids if int(self.indices_a[x][1]) >= 4 and int(self.indices_b[x][1]) >= 4])
+            train_ids = np.array([x for x in train_ids if int(self.indices_a[x][1]) >= 4 and int(self.indices_b[x][1]) >= 4])
             train_ids = np.array([x for x in train_ids if
                                   int(self.indices_a[x][1]) < protein_lengths[self.indices_a[x][0]] - 4 and
                                   int(self.indices_b[x][1]) < protein_lengths[self.indices_b[x][0]] - 4])
@@ -544,15 +496,10 @@ class Data:
         test_pairs_a = self.pairs_a[test_ids]
         test_pairs_b = self.pairs_b[test_ids]
         test_labels = self.labels[test_ids].astype(np.float32)
-        if torch.cuda.is_available():
-            return (torch.tensor(test_pairs_a).cuda(),
-                    torch.tensor(test_pairs_b).cuda(),
-                    torch.tensor(test_labels).cuda(),
-                    self.rmsds[test_ids])
-        else:
-            return (
-                torch.tensor(test_pairs_a),
-                torch.tensor(test_pairs_b),
-                torch.tensor(test_labels),
-                self.rmsds[test_ids]
-            )
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        return (
+            torch.tensor(test_pairs_a).to(device),
+            torch.tensor(test_pairs_b).to(device),
+            torch.tensor(test_labels).to(device),
+            self.rmsds[test_ids]
+        )

@@ -1,9 +1,9 @@
-import numpy as np
 import torch
-
-from geometricus.moment_invariants import SPLIT_INFOS, MomentType
+import numpy as np
 import importlib.resources as importlib_resources
+from geometricus.moment_invariants import SPLIT_INFOS, MomentType
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class ShapemerLearn(torch.nn.Module):
     def __init__(self, hidden_layer_dimension=32, output_dimension=10, split_infos=SPLIT_INFOS):
@@ -35,31 +35,21 @@ class ShapemerLearn(torch.nn.Module):
 
     def save(self, folder):
         self.eval()
-        torch.save(self.state_dict(),
-                   folder / self.filename)
+        torch.save(self.state_dict(), folder / self.filename)
 
     @property
     def filename(self):
-        split_info_string = "_".join(
-            [f"{split_info.split_type.name}-{split_info.split_size}" for split_info in self.split_infos])
-
+        split_info_string = "_".join([f"{split_info.split_type.name}-{split_info.split_size}" for split_info in self.split_infos])
         return f"ShapemerLearn_{split_info_string}_{self.number_of_moments}_{self.hidden_layer_dimension}_{self.output_dimension}.pt"
 
     @classmethod
     def load(cls, hidden_layer_dimension=32, output_dimension=10, split_infos=SPLIT_INFOS):
         model = ShapemerLearn(hidden_layer_dimension, output_dimension, split_infos=split_infos)
-        if torch.cuda.is_available():
-            m = torch.load(importlib_resources.files("geometricus") / "models" / model.filename,
-                           map_location=torch.device("cuda"))
-        else:
-            m = torch.load(importlib_resources.files("geometricus") / "models" / model.filename,
-                           map_location=torch.device("cpu"))
+        m = torch.load(importlib_resources.files("geometricus") / "models" / model.filename, map_location=device, weights_only=True)
         model.load_state_dict(m)
         model.eval()
-        if torch.cuda.is_available():
-            model.cuda()
+        model.to(device)
         return model
-
 
 def loss_func(out, distant, y):
     # Calculate the squared Euclidean distance between out and distant
@@ -69,33 +59,12 @@ def loss_func(out, distant, y):
     # Return the mean loss over the batch
     return torch.mean(loss)
 
-
 def moment_tensors_to_bits(list_of_moment_tensors):
-    bits = []
-    for i, segment in enumerate(list_of_moment_tensors):
-        bits.append(tuple(list((segment > 0.5).astype(np.uint8))))
-    return bits
-
+    return [tuple((segment > 0.5).astype(np.uint8)) for segment in list_of_moment_tensors]
 
 def moments_to_tensors(segments, model):
-    if torch.cuda.is_available():
-        return model.forward_single_segment(torch.tensor(segments).cuda()).cpu().detach().numpy()
-    return model.forward_single_segment(torch.tensor(segments)).cpu().detach().numpy()
-
+    return model.forward_single_segment(torch.tensor(segments).to(device)).cpu().detach().numpy()
 
 def moments_to_shapemers(list_of_moments, model):
-    if torch.cuda.is_available():
-        moment_tensors = (
-            model.forward_single_segment(torch.tensor(list_of_moments).cuda())
-            .cpu()
-            .detach()
-            .numpy()
-        )
-    else:
-        moment_tensors = (
-            model.forward_single_segment(torch.tensor(list_of_moments))
-            .cpu()
-            .detach()
-            .numpy()
-        )
+    moment_tensors = model.forward_single_segment(torch.tensor(list_of_moments).to(device)).cpu().detach().numpy()
     return moment_tensors_to_bits(moment_tensors)

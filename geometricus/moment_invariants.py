@@ -1,63 +1,47 @@
-from geometricus import istarmap
-from multiprocessing import Pool
-
-from tqdm import tqdm
+import prody as pd
+import numpy as np
 from time import time
-
-from dataclasses import dataclass, field
 from enum import IntEnum
 from pathlib import Path
-from typing import List, Union, Tuple
-
-import numpy as np
-import warnings
-from Bio import BiopythonDeprecationWarning
-
-warnings.filterwarnings("ignore", category=BiopythonDeprecationWarning)
-import prody as pd
+from tqdm.auto import tqdm
+from multiprocessing import Pool
 from scipy.signal import resample
-
-from geometricus import model_utility
+from typing import List, Union, Tuple
+from dataclasses import dataclass, field
+from geometricus import model_utility, istarmap
 from geometricus.moment_utility import get_moments_from_coordinates, MomentType
 from geometricus.protein_utility import ProteinKey, Structure, group_indices, parse_structure_file, get_structure_files
 
-MOMENT_TYPES = tuple(m.name for m in MomentType)
-
+import warnings
+from Bio import BiopythonDeprecationWarning
+warnings.filterwarnings("ignore", category=BiopythonDeprecationWarning)
 
 class SplitType(IntEnum):
-    """
-    Different approaches to structural fragmentation
-    """
-
+    """Different approaches to structural fragmentation"""
     KMER = 1
     """each residue is taken as the center of a kmer of length split_size, ends are included but shorter"""
     RADIUS = 2
     """overlapping spheres of radius split_size"""
     RADIUS_UPSAMPLE = 3
-    """overlapping spheres of radius split_size on coordinates upsampled by upsample rate. Only works if there's one 
-    atom selected per residue """
+    """overlapping spheres of radius split_size on coordinates upsampled by upsample rate. Only works if there's one atom selected per residue """
     ALLMER = 4
-    """adds kmers of different lengths (split_size - 5 to split_size + 5) to take into account deletions/insertions 
-    that don't change the shape """
+    """adds kmers of different lengths (split_size - 5 to split_size + 5) to take into account deletions/insertions that don't change the shape """
     KMER_CUT = 5
     """same as kmer but ends are not included, only fragments of length split_size are kept, rest are nan"""
 
-
 @dataclass
 class SplitInfo:
-    """
-    Class to store information about structural fragmentation type.
-    """
+    """Class to store information about structural fragmentation type."""
     split_type: SplitType
     split_size: int
     selection: str = "calpha"
     upsample_rate: float = 1.0
 
-
 SPLIT_INFOS = (SplitInfo(SplitType.RADIUS, 5),
                SplitInfo(SplitType.RADIUS, 10),
                SplitInfo(SplitType.KMER, 8),
                SplitInfo(SplitType.KMER, 16))
+MOMENT_TYPES = tuple(m.name for m in MomentType)
 NUM_MOMENTS = len(MomentType) * len(SPLIT_INFOS)
 
 
@@ -81,9 +65,7 @@ class MomentInvariants(Structure):
     moment_types: List[str] = None
     """Names of moments used"""
     calpha_coordinates: Union[np.ndarray, None] = None
-    """
-    calpha coordinates
-    """
+    """calpha coordinates"""
 
     @classmethod
     def from_prody_atomgroup(
@@ -139,7 +121,7 @@ class MomentInvariants(Structure):
         """
         pdb_name = Path(pdb_file).stem
         protein = pd.parsePDB(str(pdb_file))
-        if chain is not None:
+        if chain:
             protein = protein.select(f"chain {chain}")
             pdb_name = (pdb_name, chain)
         return cls.from_prody_atomgroup(
@@ -198,10 +180,7 @@ class MomentInvariants(Structure):
         split_indices = []
         for i in range(self.length):
             kmer = []
-            for j in range(
-                    max(0, i - self.split_info.split_size // 2),
-                    min(len(self.residue_splits), i + self.split_info.split_size // 2),
-            ):
+            for j in range(max(0, i - self.split_info.split_size // 2), min(len(self.residue_splits), i + self.split_info.split_size // 2)):
                 kmer += self.residue_splits[j]
             split_indices.append(kmer)
         return self._get_moments(split_indices)
@@ -209,14 +188,9 @@ class MomentInvariants(Structure):
     def _kmerize_cut_ends(self):
         split_indices = [[] for _ in range(self.length)]
         overlap = 1
-        for i in range(
-                self.split_info.split_size // 2, self.length - self.split_info.split_size // 2, overlap
-        ):
+        for i in range(self.split_info.split_size // 2, self.length - self.split_info.split_size // 2, overlap):
             kmer = []
-            for j in range(
-                    max(0, i - self.split_info.split_size // 2),
-                    min(len(self.residue_splits), i + self.split_info.split_size // 2),
-            ):
+            for j in range(max(0, i - self.split_info.split_size // 2), min(len(self.residue_splits), i + self.split_info.split_size // 2)):
                 kmer += self.residue_splits[j]
             split_indices[i] = kmer
         return self._get_moments(split_indices)
@@ -226,10 +200,7 @@ class MomentInvariants(Structure):
         for i in range(self.length):
             for split_size in range(10, self.split_info.split_size + 1, 10):
                 kmer = []
-                for j in range(
-                        max(0, i - split_size // 2),
-                        min(len(self.residue_splits), i + split_size // 2),
-                ):
+                for j in range(max(0, i - split_size // 2), min(len(self.residue_splits), i + split_size // 2)):
                     kmer += self.residue_splits[j]
                 split_indices.append(kmer)
         return self._get_moments(split_indices)
@@ -238,42 +209,27 @@ class MomentInvariants(Structure):
         split_indices = []
         kd_tree = pd.KDTree(self.coordinates)
         for i in range(self.length):
-            kd_tree.search(
-                center=self.calpha_coordinates[i],
-                radius=self.split_info.split_size,
-            )
+            kd_tree.search(center=self.calpha_coordinates[i], radius=self.split_info.split_size)
             split_indices.append(kd_tree.getIndices())
         return self._get_moments(split_indices)
 
     def _split_radius_upsample(self):
         split_indices = []
         kd_tree = pd.KDTree(self.coordinates)
-
         split_indices_upsample = []
-        coordinates_upsample = resample(
-            self.coordinates, self.split_info.upsample_rate * self.coordinates.shape[0]
-        )
+        coordinates_upsample = resample(self.coordinates, self.split_info.upsample_rate * self.coordinates.shape[0])
         kd_tree_upsample = pd.KDTree(coordinates_upsample)
-
         for i in range(self.length):
-            kd_tree_upsample.search(
-                center=self.calpha_coordinates[i],
-                radius=self.split_info.split_size,
-            )
+            kd_tree_upsample.search(center=self.calpha_coordinates[i], radius=self.split_info.split_size)
             split_indices_upsample.append(kd_tree_upsample.getIndices())
-            kd_tree.search(
-                center=self.calpha_coordinates[i],
-                radius=self.split_info.split_size,
-            )
+            kd_tree.search(center=self.calpha_coordinates[i], radius=self.split_info.split_size)
             split_indices.append(kd_tree.getIndices())
         moments = np.zeros((len(split_indices), len(self.moment_types)))
         for i, indices in enumerate(split_indices_upsample):
             if indices is None:
                 moments[i] = np.NaN
             else:
-                moments[i] = get_moments_from_coordinates(
-                    coordinates_upsample[indices], [MomentType[m] for m in self.moment_types]
-                )
+                moments[i] = get_moments_from_coordinates(coordinates_upsample[indices], [MomentType[m] for m in self.moment_types])
         return split_indices, moments
 
     def _get_moments(self, split_indices):
@@ -282,15 +238,12 @@ class MomentInvariants(Structure):
             if indices is None:
                 moments[i] = np.NaN
             else:
-                moments[i] = get_moments_from_coordinates(
-                    self.coordinates[indices], [MomentType[m] for m in self.moment_types]
-                )
+                moments[i] = get_moments_from_coordinates(self.coordinates[indices], [MomentType[m] for m in self.moment_types])
         return split_indices, moments
 
     @property
     def normalized_moments(self):
         return (np.sign(self.moments) * np.log1p(np.abs(self.moments))).astype("float32")
-
 
 @dataclass
 class MultipleMomentInvariants:
@@ -337,7 +290,6 @@ class MultipleMomentInvariants:
         calpha_coordinates: np.ndarray = atom_group.select("protein and calpha").getCoords()
         for split_info in split_infos:
             residue_splits = group_indices(atom_group.select(split_info.selection).getResindices())
-
             shape = MomentInvariants(
                 name,
                 len(residue_splits),
@@ -396,7 +348,6 @@ class MultipleMomentInvariants:
         multi: List[MomentInvariants] = []
         for split_info in split_infos:
             residue_splits = group_indices(list(np.arange(len(coordinates))))
-
             shape = MomentInvariants(
                 name,
                 len(residue_splits),
@@ -480,13 +431,11 @@ class MultipleMomentInvariants:
         -------
         list of integer shapemers, one for each residue
         """
-        return [tuple(list(x)) for x in
-                (np.nan_to_num(self.invariants[0].normalized_moments) * resolution).astype(np.int64)]
+        return [tuple(list(x)) for x in (np.nan_to_num(self.invariants[0].normalized_moments) * resolution).astype(np.int64)]
 
     @property
     def largest_kmer_split(self):
-        return max([i for i in self.invariants if i.split_info.split_type in [SplitType.KMER, SplitType.KMER_CUT]],
-                   key=lambda x: x.split_info.split_size)
+        return max([i for i in self.invariants if i.split_info.split_type in [SplitType.KMER, SplitType.KMER_CUT]], key=lambda x: x.split_info.split_size)
 
     def get_backbone(self):
         assert len(self.largest_kmer_split.split_indices) == self.length
@@ -505,22 +454,17 @@ class MultipleMomentInvariants:
                 neighbors[i] |= set(indices)
         return neighbors
 
-
 def get_invariants_for_file(protein_file, split_infos=SPLIT_INFOS, moment_types=MOMENT_TYPES):
     try:
-        return MultipleMomentInvariants.from_structure_file(protein_file, split_infos=split_infos,
-                                                            moment_types=moment_types)
+        return MultipleMomentInvariants.from_structure_file(protein_file, split_infos=split_infos, moment_types=moment_types)
     except ValueError:
         return None
 
-
 def get_invariants_for_structures(input_files, n_threads=1, verbose=True,
                                   split_infos: List[SplitInfo] = SPLIT_INFOS,
-                                  moment_types: List[str] = MOMENT_TYPES) -> Tuple[List[MultipleMomentInvariants],
-                                                                                   List[str]]:
+                                  moment_types: List[str] = MOMENT_TYPES) -> Tuple[List[MultipleMomentInvariants], List[str]]:
     """
     Get invariants for a list of structures using multiple threads.
-
 
     Parameters
     ----------
@@ -543,26 +487,23 @@ def get_invariants_for_structures(input_files, n_threads=1, verbose=True,
     -------
     List of MultipleMomentInvariants objects, one for each structure, List of files which threw an error
     """
-    if split_infos is None:
-        split_infos = SPLIT_INFOS
-    if moment_types is None:
-        moment_types = MOMENT_TYPES
+    split_infos = split_infos or SPLIT_INFOS
+    moment_types = moment_types or MOMENT_TYPES
     start_time = time()
     protein_files = get_structure_files(input_files)
+    
     if verbose:
         print(f"Found {len(protein_files)} protein structures", flush=True)
-    invariants = []
+    
+    invariants, errors = [], []
     index = 0
-    errors = []
     with Pool(n_threads) as pool:
         for i in tqdm(pool.istarmap(get_invariants_for_file,
                                     zip(protein_files,
-                                        [split_infos] * len(
-                                            protein_files),
-                                        [moment_types] * len(
-                                            protein_files),
-                                        )), total=len(protein_files)):
-            if i is not None:
+                                        [split_infos] * len(protein_files),
+                                        [moment_types] * len(protein_files),
+                                    )), total=len(protein_files)):
+            if i:
                 invariants.append(i)
             else:
                 errors.append(protein_files[index])
